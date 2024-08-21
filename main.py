@@ -1,7 +1,12 @@
 import requests
+import os
 
-# Adicione seu token de acesso pessoal aqui
-token = "token"
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Configuração do token de acesso pessoal
+token = os.getenv("GITHUB_TOKEN")
 
 # Função para obter os repositórios mais populares com a palavra-chave "microservices"
 def get_popular_repos(keyword, num_repos):
@@ -115,4 +120,4 @@ if __name__ == "__main__":
         popular_repos = get_popular_repos(keyword, num_repos)
         collect_and_print_repo_info(popular_repos)
     except Exception as e:
-        print(e)
+        print("ERROR: ",e)
