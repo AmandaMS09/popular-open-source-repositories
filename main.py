@@ -1,5 +1,6 @@
 import requests
 import os
+import csv
 
 from dotenv import load_dotenv
 
@@ -10,6 +11,10 @@ from datetime import date, datetime
 date_format = "%Y/%m/%d"
 
 today = datetime.__format__(date.today(), date_format)
+
+arquivo_csv = open('dados.csv', 'w')
+
+escritor = csv.writer(arquivo_csv)
 
 # Configuração do token de acesso pessoal
 token = os.getenv("GITHUB_TOKEN")
@@ -157,31 +162,29 @@ def collect_and_print_repo_info(repos):
 
 # Função para imprimir dados dos repositórios
 def print_repo_data(repos):
+    escritor.writerow(["Repositório", "Idade", "PR's aceitas", "Total de releases", "Dias desde última atualização", "Linguagem principal", "Percentual de issues fechadas"])
     for repo in repos:
         owner = repo["owner"]["login"]
         repo_name = repo["name"]
         repo_details = get_repo_details(owner, repo_name)
-        
-        merged_pull_requests = get_merged_pull_requests_count(owner, repo_name)
         releases = get_releases(owner, repo_name)
         closed_issues = get_closed_issues(owner, repo_name)
         issues_count = get_issues_count(owner, repo_name)
+        merged_pull_requests = get_merged_pull_requests_count(owner, repo_name)
         treated_closed_issues = closed_issues if closed_issues is not None else 0
         treated_issues_count = issues_count if issues_count is not None else 0
+        treated_releases = releases if releases is not None else 'N/A'
 
         format_string = "%Y-%m-%dT%H:%M:%SZ"
         creation_date = datetime.strptime(repo_details['created_at'], format_string)
         age = datetime.strptime(today, date_format) - creation_date
+        last_update_date = datetime.strptime(repo_details['pushed_at'], format_string)
+        days_since_updated = datetime.strptime(today, date_format) - last_update_date
 
-        print(f"Repository: {repo_name}")
-        print(f"Owner: {owner}")
-        print(f"Age: {age.days}")
-        print(f"Merged pull requests: {merged_pull_requests}")
-        print(f"Releases: {releases if releases is not None else 'N/A'}")
-        print(f"Last updated at: {datetime.strptime(repo_details['pushed_at'], format_string)}")
-        print(f"Main Language: {repo_details['language']}")
-        print(f"Closed Issues percentage: {"{:10.2f}".format(treated_closed_issues/treated_issues_count)}")
-        print("-" * 200)
+        repositorio = f"https://github.com/{owner}/{repo_name}"
+        percentual_issues = "{:10.2f}".format(0 if treated_issues_count == 0 else treated_closed_issues/treated_issues_count)
+
+        escritor.writerow([repositorio, age.days, merged_pull_requests, treated_releases, days_since_updated.days, repo_details['language'], percentual_issues])
 
 # Main
 if __name__ == "__main__":
@@ -191,5 +194,6 @@ if __name__ == "__main__":
         popular_repos = get_popular_repos_by_keyword(keyword, num_repos)
         # collect_and_print_repo_info(popular_repos)
         print_repo_data(popular_repos)
+        arquivo_csv.close()
     except Exception as e:
         print("ERROR: ",e)
