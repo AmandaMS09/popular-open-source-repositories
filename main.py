@@ -8,9 +8,7 @@ load_dotenv()
 
 from datetime import date, datetime
 
-date_format = "%Y/%m/%d"
-
-today = datetime.__format__(date.today(), date_format)
+today = date.today()
 
 arquivo_csv = open('dados.csv', 'w')
 
@@ -19,181 +17,86 @@ escritor = csv.writer(arquivo_csv)
 # Configuração do token de acesso pessoal
 token = os.getenv("GITHUB_TOKEN")
 
-# Função para obter os repositórios mais populares com a palavra-chave "microservices"
-def get_popular_repos_by_keyword(keyword, num_repos):
-    url = f"https://api.github.com/search/repositories?q={keyword}&sort=stars&order=desc&per_page={num_repos}"
-    headers = {"Authorization": f"token {token}"}
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
-        return response.json()["items"]
+graphQLEndpoint = "https://api.github.com/graphql"
+
+query = """query($after: String) {
+  search(type: REPOSITORY, query: "stars:>1600", first: 25, after: $after) {
+    pageInfo {
+      endCursor
+    }
+    edges {
+      node {
+        ... on Repository {
+          url
+          createdAt
+          pushedAt
+          primaryLanguage {
+            name
+          }
+          issues {
+            totalCount
+          }
+          closedIssues: issues(states: CLOSED) {
+            totalCount
+          }
+          pullRequests(states: MERGED) {
+            totalCount
+          }
+          releases {
+            totalCount
+          }
+          stargazers {
+            totalCount
+          }
+        }
+      }
+    }
+  }
+}"""
+
+# Função para executar a consulta GraphQL
+def run_query(query, variables):
+    request = requests.post(graphQLEndpoint, json={'query': query, 'variables': variables}, headers={"Authorization": f"Bearer {token}"})
+    if request.status_code == 200:
+        return request.json()
     else:
-        raise Exception(f"Failed to fetch repositories: {response.status_code}")
-
-# Função para obter detalhes de um repositório
-def get_repo_details(owner, repo):
-    url = f"https://api.github.com/repos/{owner}/{repo}"
-    headers = {"Authorization": f"token {token}"}
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
-        return response.json()
-    else:
-        raise Exception(f"Failed to fetch repository details: {response.status_code}")
-
-# Função para obter o número de pull requests com paginação
-def get_pull_requests(owner, repo):
-    url = f"https://api.github.com/repos/{owner}/{repo}/pulls?state=all"
-    headers = {"Authorization": f"token {token}"}
-    page = 1
-    pull_requests = []
-    while True:
-        response = requests.get(f"{url}&page={page}&per_page=100", headers=headers)
-        if response.status_code == 200:
-            page_pull_requests = response.json()
-            if not page_pull_requests:
-                break
-            pull_requests.extend(page_pull_requests)
-            page += 1
-        else:
-            raise Exception(f"Failed to fetch pull requests: {response.status_code}")
-    return len(pull_requests)
-
-# Função para obter o número de releases com paginação
-def get_releases(owner, repo):
-    url = f"https://api.github.com/repos/{owner}/{repo}/releases"
-    headers = {"Authorization": f"token {token}"}
-    page = 1
-    releases = []
-    while True:
-        response = requests.get(f"{url}?page={page}&per_page=100", headers=headers)
-        if response.status_code == 200:
-            page_releases = response.json()
-            if not page_releases:
-                break
-            releases.extend(page_releases)
-            page += 1
-        else:
-            raise Exception(f"Failed to fetch releases: {response.status_code}")
-    return len(releases)
-
-# Função para obter o número de issues fechadas com paginação
-def get_closed_issues(owner, repo):
-    url = f"https://api.github.com/repos/{owner}/{repo}/issues?state=closed"
-    headers = {"Authorization": f"token {token}"}
-    page = 1
-    closed_issues = []
-    while True:
-        response = requests.get(f"{url}&page={page}&per_page=100", headers=headers)
-        if response.status_code == 200:
-            page_closed_issues = response.json()
-            if not page_closed_issues:
-                break
-            closed_issues.extend(page_closed_issues)
-            page += 1
-        else:
-            raise Exception(f"Failed to fetch closed issues: {response.status_code}")
-    return len(closed_issues)
-
-# Função para obter a quantidade total de issues
-def get_issues_count(owner, repo):
-    url = f"https://api.github.com/repos/{owner}/{repo}/issues?state=all"
-    headers = {"Authorization": f"token {token}"}
-    page = 1
-    issues = []
-    while True:
-        response = requests.get(f"{url}&page={page}&per_page=100", headers=headers)
-        if response.status_code == 200:
-            page_issues = response.json()
-            if not page_issues:
-                break
-            issues.extend(page_issues)
-            page += 1
-        else:
-            raise Exception(f"Failed to fetch issues: {response.status_code}")
-    return len(issues)
-
-# Função para obter o número de pull requests aceitas
-def get_merged_pull_requests_count(owner, repo):
-    url = f"https://api.github.com/repos/{owner}/{repo}/pulls?state=closed"
-    headers = {"Authorization": f"token {token}"}
-    page = 1
-    pull_requests = []
-    while True:
-        response = requests.get(f"{url}&page={page}&per_page=100", headers=headers)
-        if response.status_code == 200:
-            page_pull_requests = response.json()
-            if not page_pull_requests:
-                break
-            merged_pull_requests = filter(lambda x: x["merged_at"] != "null", page_pull_requests)
-            pull_requests.extend(merged_pull_requests)
-            page += 1
-        else:
-            raise Exception(f"Failed to fetch merged pull requests: {response.status_code}")
-    return len(pull_requests)
-
-# Função para coletar e imprimir informações dos repositórios
-def collect_and_print_repo_info(repos):
-    for repo in repos:
-        owner = repo["owner"]["login"]
-        repo_name = repo["name"]
-        repo_details = get_repo_details(owner, repo_name)
-        
-        pull_requests = get_pull_requests(owner, repo_name)
-        releases = get_releases(owner, repo_name)
-        closed_issues = get_closed_issues(owner, repo_name)
-
-        print(f"Repository: {repo_name}")
-        print(f"Owner: {owner}")
-        print(f"URL: {repo_details['html_url']}")
-        print(f"Stars: {repo_details['stargazers_count']}")
-        print(f"Forks: {repo_details['forks_count']}")
-        print(f"Commits: {repo_details['open_issues_count']}")
-        print(f"Watchers: {repo_details['watchers_count']}")
-        print(f"Pull Requests: {pull_requests if pull_requests is not None else 'N/A'}")
-        print(f"Last Commit Date: {repo_details['pushed_at']}")
-        print(f"Main Language: {repo_details['language']}")
-        print(f"License: {repo_details['license']['name'] if repo_details['license'] else 'No license'}")
-        print(f"Contributors: {repo_details['network_count']}")
-        print(f"Size: {repo_details['size']} KB")
-        print(f"Main Branch: {repo_details['default_branch']}")
-        print(f"Releases: {releases if releases is not None else 'N/A'}")
-        print(f"Closed Issues: {closed_issues if closed_issues is not None else 'N/A'}")
-        print(f"Topics: {', '.join(repo_details['topics']) if 'topics' in repo_details else 'No topics'}")
-        print("-" * 200)
+        raise Exception(f"FAILED TO RUN QUERY. Status code: {request.status_code}")
 
 # Função para imprimir dados dos repositórios
 def print_repo_data(repos):
-    escritor.writerow(["Repositório", "Idade", "PR's aceitas", "Total de releases", "Dias desde última atualização", "Linguagem principal", "Percentual de issues fechadas"])
     for repo in repos:
-        owner = repo["owner"]["login"]
-        repo_name = repo["name"]
-        repo_details = get_repo_details(owner, repo_name)
-        releases = get_releases(owner, repo_name)
-        closed_issues = get_closed_issues(owner, repo_name)
-        issues_count = get_issues_count(owner, repo_name)
-        merged_pull_requests = get_merged_pull_requests_count(owner, repo_name)
-        treated_closed_issues = closed_issues if closed_issues is not None else 0
-        treated_issues_count = issues_count if issues_count is not None else 0
-        treated_releases = releases if releases is not None else 'N/A'
-
+        repo = repo['node']
+        
         format_string = "%Y-%m-%dT%H:%M:%SZ"
-        creation_date = datetime.strptime(repo_details['created_at'], format_string)
-        age = datetime.strptime(today, date_format) - creation_date
-        last_update_date = datetime.strptime(repo_details['pushed_at'], format_string)
-        days_since_updated = datetime.strptime(today, date_format) - last_update_date
+        creation_date = datetime.strptime(repo['createdAt'], format_string)
+        created_at = datetime.date(creation_date)
+        age = today - created_at
 
-        repositorio = f"https://github.com/{owner}/{repo_name}"
-        percentual_issues = "{:10.2f}".format(0 if treated_issues_count == 0 else treated_closed_issues/treated_issues_count)
+        merged_pull_requests = repo['pullRequests']['totalCount']
 
-        escritor.writerow([repositorio, age.days, merged_pull_requests, treated_releases, days_since_updated.days, repo_details['language'], percentual_issues])
+        releases = repo['releases']['totalCount']
+
+        last_update_date = datetime.strptime(repo['pushedAt'], format_string)
+        last_updated = datetime.date(last_update_date)
+        days_since_updated = today - last_updated
+
+        primary_language = repo['primaryLanguage']['name'] if repo['primaryLanguage'] is not None else "N/A"
+
+        closed_issues = repo['closedIssues']['totalCount']
+        issues_count = repo['issues']['totalCount']
+        percentual_issues = "{:.2%}".format(0 if issues_count == 0 else closed_issues/issues_count)
+
+        escritor.writerow([repo['url'], age.days, merged_pull_requests, releases, days_since_updated.days, primary_language, issues_count, percentual_issues])
 
 # Main
 if __name__ == "__main__":
-    keyword = "microservices"
-    num_repos = 10  # Número de repositórios a serem coletados
     try:
-        popular_repos = get_popular_repos_by_keyword(keyword, num_repos)
-        # collect_and_print_repo_info(popular_repos)
-        print_repo_data(popular_repos)
+        escritor.writerow(["Repositório", "Idade (dias)", "PR's aceitas", "Releases", "Última atualização (dias)", "Linguagem principal", "Issues", "Issues fechadas"])
+        variables = {"after": None}
+        for i in range(40):
+            res = run_query(query, variables)
+            print_repo_data(res['data']['search']['edges'])
+            variables = {"after": res['data']['search']['pageInfo']['endCursor']}
         arquivo_csv.close()
     except Exception as e:
         print("ERROR: ",e)
